@@ -1,5 +1,5 @@
-THis repository contains Python code to "transpose" historical international merchandise trade data, from a 2017 edition of 
-commodity code to a 2022 edition of the commodity code. 
+This repository contains Python code to "transpose" historical international merchandise trade data, from a 2017 edition of 
+commodity code to a 2022 edition of the commodity code, as part of the Expert Deployment Mechanism for Trade & Development (EDM)
 
 It uses historical (2019-2021) trade data for four countries, together with a correlation table, all available separately.
 
