@@ -1,0 +1,134 @@
+import sys
+import pandas as pd
+import numpy as np
+from pandas import DataFrame
+from module_merge import merge_data  # Imports module to assign code names
+from module_output import output_data  # Imports module to format output of each of Can + World
+
+###########################################################################################
+# This program "transposes" or maps three years of trade data, from their original 2017 codes 
+# to new 2022 codes using a correlation table and the raw datasets.
+# It uses two modules (merge_module_Canada and output_Canada) to format output.
+###########################################################################################
+
+# Reads in the correlation table
+corr_df = pd.read_excel('Correlation_Table_AHTN_2017_2022.xlsx')
+
+# Initializes mapping matrix with zeros, of dimensions = HS 2022 (rows = 11415) and
+# HS 2017 codes (columns = 10813)
+shape = (pd.Series(corr_df['AHTN 2022']).nunique(),
+         pd.Series(corr_df['AHTN 2017']).nunique())
+array_map = np.zeros(shape)
+
+# Extracts (sorted) row and column codes from correlation table and assigns to
+# mapping matrix / mapping df
+row_names = sorted(corr_df['AHTN 2022'].unique().tolist())
+col_names = sorted(corr_df['AHTN 2017'].unique().tolist())
+map_df = pd.DataFrame(data=array_map, index=row_names, columns=col_names)
+
+# Create the Flag column for partially assigned / problem commodities
+corr_df['Flag'] = corr_df['Share'].apply(lambda x: 0 if x == 1 else 1)
+
+# Aggregate the AHTN 2022 values to ensure the (problem commodity) Flag is 1 if any Flag is 1
+aggregated_flags = corr_df.groupby('AHTN 2022')['Flag'].max().reset_index()
+aggregated_flags = aggregated_flags.rename(columns={'AHTN 2022': 'AHTN_code'})
+
+# Assigns shares from the correlation table to the mapping matrix
+for i in range(len(corr_df)):
+    row = corr_df.loc[i, 'AHTN 2022']
+    col = corr_df.loc[i, 'AHTN 2017']
+    map_df.loc[row, col] = corr_df.loc[i, 'Share']
+
+# Define the sets of years to process
+years_sets = {
+    'Can': ['2019_M_Can', '2020_M_Can', '2021_M_Can'],
+    'World': ['2019_M_World', '2020_M_World', '2021_M_World']
+}
+
+# Define trade datasets
+datasets = ['CAM_Trade.xlsx', 'LDPR_Trade.xlsx', 'MYAN_Trade.xlsx', 'VN_Trade.xlsx']
+
+# Initialize dictionaries to store results for both sets
+trade_new_dict = {}
+trade_test_dict = {}
+
+# Readies for matrix multiplication by defining numpy matrix of shares
+matrix_map = map_df.to_numpy()
+
+# Process each dataset and each set of columns ('Can' and 'World')
+for dataset in datasets:
+    # Extract the base name for the dataset (e.g., 'CAM')
+    dataset_name = dataset.split('_')[0]
+    
+    # Reads in the trade data
+    trade_data_df = pd.read_excel(dataset)
+    trade_data_df['AHTN_code'] = trade_data_df['AHTN_code'].astype(str)
+    trade_data_df = trade_data_df.sort_values('AHTN_code')
+    
+    # Process each set of columns ('Can' and 'World')
+    for key, years in years_sets.items():
+        # Create a unique dictionary key for each set (e.g., 'CAM_Can', 'CAM_World')
+        dict_key = f"{dataset_name}_{key}"
+        
+        # Filter the relevant columns and fill NaN values
+        columns_to_keep = ['AHTN_code'] + years
+        trade_subset_df = trade_data_df[columns_to_keep].fillna(0)
+
+        # Initialize the trade vectors
+        vectors_data = np.zeros((len(col_names), len(years)))
+
+        # Assign values to vectors based on years
+        for idx, year in enumerate(years):
+            vectors_data[:, idx] = trade_subset_df[year]
+
+        # Perform matrix multiplication / mapping
+        vectors_new = matrix_map.dot(vectors_data)
+
+        # Create a DataFrame from the mapped data
+        trade_new_df = pd.DataFrame(data=vectors_new, index=row_names, columns=years)
+        trade_new_df = trade_new_df.rename_axis('AHTN_code')
+
+        # Store the transformed DataFrame in trade_new_dict
+        trade_new_dict[dict_key] = trade_new_df
+
+        # Alternative calculation for validation
+        # Calculates "Share_calc" before performing merges
+        corr_df['Share_calc'] = corr_df.groupby('AHTN 2017')['AHTN 2017'].transform('count').rdiv(1)
+
+        trade_temp_df = corr_df[['AHTN 2022', 'AHTN 2017', 'Share_calc']].merge(
+            trade_data_df, how='left', left_on='AHTN 2017', right_on='AHTN_code'
+        )
+        trade_temp_df = trade_temp_df.drop(columns=['AHTN_code'])
+        for year in years:
+            trade_temp_df[year] = trade_temp_df[year] * trade_temp_df['Share_calc']
+        
+        # Rolls up trade numbers into 2022 edition codes and assign to new DataFrame
+        df_trade_calc = trade_temp_df.groupby('AHTN 2022').agg({year: 'sum' for year in years}).reset_index()
+        trade_test_dict[dict_key] = df_trade_calc
+
+        # Compare the transformed data with the calculated data
+        trade_test_df = df_trade_calc.set_index('AHTN 2022')[years]
+        values_new = trade_new_df[years].values
+        values_test = trade_test_df.values
+
+        # Perform the comparison using np.allclose
+        are_equal = np.allclose(values_new, values_test, atol=1e-2)
+        if are_equal:
+            print(f"{dict_key}: New and test datasets are equal")
+        else:
+            print(f"{dict_key}: New and test datasets are NOT equal")
+
+# Perform the merge using the merge_data function from module_merge_Can
+code_files = {
+    "CAM": "CAM_2023CodesClean.xlsx",
+    "LDPR": "LDPR_2023CodesClean.xlsx",
+    "MYAN": "MYAN_2022CodesClean.xlsx",
+    "VN": "VN_2023CodesClean.xlsx"
+}
+trade_merged_dict = merge_data(trade_new_dict, code_files, aggregated_flags)
+
+# Define chapters and headers for the output
+chap_headers_file = "Chap+Headers2022.xlsx"
+
+# Use the output_data function to save the final output
+output_data(trade_merged_dict, chap_headers_file)
