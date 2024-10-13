@@ -8,7 +8,7 @@ from module_output import output_data  # Imports module to format output of each
 ###########################################################################################
 # This program "transposes" or maps three years of trade data, from their original 2017 codes 
 # to new 2022 codes using a correlation table and the raw datasets.
-# It uses two modules (merge_module_Canada and output_Canada) to format output.
+# It uses two modules (module_merge and merge_output) to format output.
 ###########################################################################################
 
 # Reads in the correlation table
