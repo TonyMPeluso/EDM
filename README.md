@@ -5,5 +5,4 @@ It uses historical (2019-2021) trade data for four countries, together with a co
 
 One file, main_Part+Compl_Calc.py, calculates column sums for commodities that have been either partially or completely reassigned to new 2021 commodity codes.
 
-The other, main_map, performs the actual transpositon and outputs the data to a template. It also calls on two modules, module_merge and module_output,
-to copy commodity descriptions from a spreadsheet, and to output files to spreadsheets.
+The other, main_map, performs the actual transpositon and outputs the data to a template. 
